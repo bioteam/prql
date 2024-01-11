@@ -9,12 +9,14 @@ columns:
         - customer_no
       target_id: 123
       target_name: ~
+      ty: ~
   - Single:
       name:
         - orders
         - gross
       target_id: 124
       target_name: ~
+      ty: ~
   - Single:
       name:
         - orders
@@ -25,6 +27,31 @@ columns:
       name: ~
       target_id: 126
       target_name: ~
+      ty:
+        kind:
+          Union:
+            - - ~
+              - kind:
+                  Primitive: Int
+                span: "2:970-973"
+                name: ~
+            - - ~
+              - kind:
+                  Primitive: Float
+                span: "2:977-982"
+                name: ~
+            - - ~
+              - kind:
+                  Primitive: Timestamp
+                span: "2:986-995"
+                name: ~
+            - - ~
+              - kind:
+                  Primitive: Date
+                span: "2:999-1003"
+                name: ~
+        span: "2:970-1003"
+        name: ~
 inputs:
   - id: 121
     name: orders

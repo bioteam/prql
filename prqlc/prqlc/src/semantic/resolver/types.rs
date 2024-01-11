@@ -198,7 +198,7 @@ impl Resolver<'_> {
 
             DeclKind::Module(_)
             | DeclKind::LayeredModules(_)
-            | DeclKind::Column(_)
+            | DeclKind::Column(..)
             | DeclKind::Infer(_)
             | DeclKind::TableDecl(_)
             | DeclKind::Ty(_)

@@ -5,6 +5,8 @@ use enum_as_inner::EnumAsInner;
 use itertools::{Itertools, Position};
 use serde::{Deserialize, Serialize};
 
+use prqlc_ast::Ty;
+
 use super::Ident;
 
 /// Represents the object that is manipulated by the pipeline transforms.
@@ -42,6 +44,9 @@ pub enum LineageColumn {
 
         // if target is a relation, this is the name within the relation
         target_name: Option<String>,
+
+        // Type of the defining expression, if known
+        ty: Option<Ty>,
     },
 
     /// All columns (including unknown ones) from an input (i.e. `foo_table.*`)

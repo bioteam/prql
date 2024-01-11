@@ -73,7 +73,7 @@ pub enum DeclKind {
     /// A single column. Contains id of target which is either:
     /// - an input relation that is source of this column or
     /// - a column expression.
-    Column(usize),
+    Column(usize, Option<Ty>),
 
     /// Contains a default value to be created in parent namespace when NS_INFER is matched.
     Infer(Box<DeclKind>),
@@ -191,7 +191,7 @@ impl std::fmt::Display for DeclKind {
                 )
             }
             Self::InstanceOf(arg0, _) => write!(f, "InstanceOf: {arg0}"),
-            Self::Column(arg0) => write!(f, "Column (target {arg0})"),
+            Self::Column(arg0, ty) => write!(f, "Column (target {arg0} ty {ty:?})"),
             Self::Infer(arg0) => write!(f, "Infer (default: {arg0})"),
             Self::Expr(arg0) => write!(f, "Expr: {}", write_pl(*arg0.clone())),
             Self::Ty(arg0) => write!(f, "Ty: {}", write_ty(arg0)),

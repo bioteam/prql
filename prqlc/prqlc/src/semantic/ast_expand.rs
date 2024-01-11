@@ -465,7 +465,7 @@ fn restrict_decl(name: String, value: decl::Decl) -> Option<Stmt> {
         decl::DeclKind::InstanceOf(ident, _) => {
             new_internal_stmt(name, format!("instance_of.{ident}"))
         }
-        decl::DeclKind::Column(id) => new_internal_stmt(name, format!("column.{id}")),
+        decl::DeclKind::Column(id, _) => new_internal_stmt(name, format!("column.{id}")),
         decl::DeclKind::Infer(_) => new_internal_stmt(name, "infer".to_string()),
 
         decl::DeclKind::Expr(mut expr) => StmtKind::VarDef(VarDef {

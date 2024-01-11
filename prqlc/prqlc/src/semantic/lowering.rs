@@ -625,6 +625,7 @@ impl Lowerer {
                     name,
                     target_id,
                     target_name,
+                    ..
                 } => {
                     let cid = self.lookup_cid(*target_id, target_name.as_ref())?;
 

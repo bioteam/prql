@@ -94,12 +94,13 @@ impl Resolver<'_> {
                         .flat_map(|c| c.as_single().map(|x| x.0).cloned().flatten())
                         .collect(),
                 },
-                TupleField::Single(col_name, _) => LineageColumn::Single {
+                TupleField::Single(col_name, col_ty) => LineageColumn::Single {
                     name: col_name
                         .clone()
                         .map(|col_name| Ident::from_path(vec![input_name.clone(), col_name])),
                     target_id: input_id,
                     target_name: col_name.clone(),
+                    ty: col_ty.clone(),
                 },
             };
             instance_frame.columns.push(col);

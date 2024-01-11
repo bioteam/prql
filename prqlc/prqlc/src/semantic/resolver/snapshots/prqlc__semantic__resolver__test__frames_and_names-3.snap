@@ -9,17 +9,34 @@ columns:
         - emp_no
       target_id: 129
       target_name: ~
+      ty: ~
   - Single:
       name:
         - e
         - gender
       target_id: 130
       target_name: ~
+      ty: ~
   - Single:
       name:
         - emp_salary
       target_id: 148
       target_name: ~
+      ty:
+        kind:
+          Union:
+            - - ~
+              - kind:
+                  Primitive: Float
+                span: "2:4193-4198"
+                name: ~
+            - - ~
+              - kind:
+                  Singleton: "Null"
+                span: "2:4202-4206"
+                name: ~
+        span: "2:4193-4206"
+        name: ~
 inputs:
   - id: 122
     name: e

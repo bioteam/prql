@@ -601,7 +601,7 @@ impl Resolver<'_> {
             vec![dummy],
         )));
 
-        let env = Module::singleton(param_name, Decl::from(DeclKind::Column(param_id)));
+        let env = Module::singleton(param_name, Decl::from(DeclKind::Column(param_id, None)));
         self.root_mod.module.stack_push(NS_PARAM, env);
 
         let mut pipeline = self.fold_expr(pipeline)?;
@@ -736,6 +736,7 @@ fn append(mut top: Lineage, bottom: Lineage) -> Result<Lineage, Error> {
                     name: name_t,
                     target_id,
                     target_name,
+                    ty,
                 },
                 LineageColumn::Single { name: name_b, .. },
             ) => match (name_t, name_b) {
@@ -745,6 +746,7 @@ fn append(mut top: Lineage, bottom: Lineage) -> Result<Lineage, Error> {
                         name,
                         target_id,
                         target_name,
+                        ty,
                     }
                 }
                 (None, Some(name)) | (Some(name), _) => {
@@ -753,6 +755,7 @@ fn append(mut top: Lineage, bottom: Lineage) -> Result<Lineage, Error> {
                         name,
                         target_id,
                         target_name,
+                        ty,
                     }
                 }
             },
@@ -854,6 +857,7 @@ impl Lineage {
                                                 }),
                                                 target_id: input_id,
                                                 target_name: Some(remaining.clone()),
+                                                ty: None,
                                             })
                                         }
                                         continue 'within;
@@ -892,12 +896,14 @@ impl Lineage {
                     target_name: Some(ident.name.clone()),
                     name: Some(ident),
                     target_id,
+                    ty: expr.ty.clone(),
                 }
             } else {
                 LineageColumn::Single {
                     target_name: None,
                     name: Some(ident),
                     target_id,
+                    ty: expr.ty.clone(),
                 }
             });
             return;
@@ -924,6 +930,7 @@ impl Lineage {
             name,
             target_id,
             target_name,
+            ty: expr.ty.clone(),
         });
     }
 

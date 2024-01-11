@@ -263,7 +263,7 @@ impl Module {
                 LineageColumn::All { input_id, .. } => {
                     let input = lineage.find_input(*input_id).unwrap();
 
-                    let kind = DeclKind::Infer(Box::new(DeclKind::Column(input.id)));
+                    let kind = DeclKind::Infer(Box::new(DeclKind::Column(input.id, None)));
                     let declared_at = Some(input.id);
                     let decl = Decl {
                         kind,
@@ -276,10 +276,11 @@ impl Module {
                 LineageColumn::Single {
                     name: Some(name),
                     target_id,
+                    ty,
                     ..
                 } => {
                     let decl = Decl {
-                        kind: DeclKind::Column(*target_id),
+                        kind: DeclKind::Column(*target_id, ty.clone()),
                         declared_at: None,
                         order: col_index + 1,
                         ..Default::default()
@@ -301,7 +302,7 @@ impl Module {
         let namespace = self.names.entry(namespace.to_string()).or_default();
         let namespace = namespace.kind.as_module_mut().unwrap();
 
-        namespace.names.insert(name, DeclKind::Column(id).into());
+        namespace.names.insert(name, DeclKind::Column(id, None).into());
     }
 
     pub fn shadow(&mut self, ident: &str) {

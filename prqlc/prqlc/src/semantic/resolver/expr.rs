@@ -86,9 +86,10 @@ impl PlFold for Resolver<'_> {
                         target_id: entry.declared_at,
                         ..node
                     },
-                    DeclKind::Column(target_id) => Expr {
+                    DeclKind::Column(target_id, ty) => Expr {
                         kind: ExprKind::Ident(fq_ident),
                         target_id: Some(*target_id),
+                        ty: ty.clone().or(node.ty.clone()),
                         ..node
                     },
 
@@ -298,10 +299,11 @@ impl Resolver<'_> {
                         ..Expr::new(ExprKind::Tuple(sub_fields))
                     }
                 }
-                DeclKind::Column(target_id) => Expr {
+                DeclKind::Column(target_id, ty) => Expr {
                     id: Some(id.gen()),
                     target_id: Some(*target_id),
                     // alias: Some(name.clone()),
+                    ty: ty.clone(),
                     ..Expr::new(Ident::from_path([prefix.to_vec(), vec![name]].concat()))
                 },
                 _ => continue,

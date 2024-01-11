@@ -309,10 +309,84 @@ lineage:
           - issued_at
         target_id: 120
         target_name: ~
+        ty:
+          kind:
+            Union:
+              - - ~
+                - kind:
+                    Union:
+                      - - ~
+                        - kind:
+                            Primitive: Int
+                          span: "2:1963-1966"
+                          name: ~
+                      - - ~
+                        - kind:
+                            Primitive: Float
+                          span: "2:1970-1975"
+                          name: ~
+                      - - ~
+                        - kind:
+                            Primitive: Bool
+                          span: "2:1979-1983"
+                          name: ~
+                      - - ~
+                        - kind:
+                            Primitive: Text
+                          span: "2:1987-1991"
+                          name: ~
+                      - - ~
+                        - kind:
+                            Primitive: Date
+                          span: "2:1995-1999"
+                          name: ~
+                      - - ~
+                        - kind:
+                            Primitive: Time
+                          span: "2:2003-2007"
+                          name: ~
+                      - - ~
+                        - kind:
+                            Primitive: Timestamp
+                          span: "2:2011-2020"
+                          name: ~
+                      - - ~
+                        - kind:
+                            Singleton: "Null"
+                          span: "2:2024-2028"
+                          name: ~
+                  span: "2:1963-2028"
+                  name: scalar
+              - - ~
+                - kind:
+                    Tuple:
+                      - Wildcard:
+                          kind: Any
+                          span: "2:2043-2050"
+                          name: ~
+                  span: "2:2042-2053"
+                  name: tuple
+          span: "2:3020-3035"
+          name: ~
     - Single:
         name: ~
         target_id: 136
         target_name: ~
+        ty:
+          kind:
+            Union:
+              - - ~
+                - kind:
+                    Primitive: Float
+                  span: "2:4193-4198"
+                  name: ~
+              - - ~
+                - kind:
+                    Singleton: "Null"
+                  span: "2:4202-4206"
+                  name: ~
+          span: "2:4193-4206"
+          name: ~
   inputs:
     - id: 118
       name: c_invoice

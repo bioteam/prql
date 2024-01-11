@@ -89,6 +89,8 @@ pub struct TyFunc {
     pub return_ty: Box<Option<Ty>>,
 }
 
+impl Eq for Ty {}
+
 impl Ty {
     pub fn new<K: Into<TyKind>>(kind: K) -> Ty {
         Ty {
