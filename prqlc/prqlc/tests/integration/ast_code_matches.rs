@@ -49,12 +49,12 @@ fn test_expr_ast_code_matches() {
     -    /// exactly one of types in the domain.
     -    pub domain: Vec<Ty>,
     @@ .. @@
+    -}
+    -
     -/// A value and a series of functions that are to be applied to that value one after another.
     -#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
     -pub struct Pipeline {
     -    pub exprs: Vec<Expr>,
-    -}
-    -
     "###
     );
 }

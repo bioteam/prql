@@ -20,6 +20,7 @@ impl Expr {
             kind: kind.into(),
             span: None,
             alias: None,
+            ty: None,
         }
     }
 }
@@ -38,6 +39,9 @@ pub struct Expr {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub alias: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ty: Option<Ty>,
 }
 
 #[derive(Debug, EnumAsInner, PartialEq, Clone, Serialize, Deserialize, strum::AsRefStr)]

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::ir::decl::{Decl, DeclKind, Module, TableDecl, TableExpr};
 use crate::ir::pl::*;
 use crate::WithErrorInfo;
-use prqlc_ast::{TupleField, Ty, TyKind};
+use prqlc_ast::{Ty, TyKind};
 
 impl super::Resolver<'_> {
     // entry point to the resolver
@@ -128,17 +128,8 @@ impl super::Resolver<'_> {
 
 fn prepare_expr_decl(value: Box<Expr>) -> DeclKind {
     match &value.lineage {
-        Some(frame) => {
-            let columns = (frame.columns.iter())
-                .map(|col| match col {
-                    LineageColumn::All { .. } => TupleField::Wildcard(None),
-                    LineageColumn::Single { name, .. } => {
-                        TupleField::Single(name.as_ref().map(|n| n.name.clone()), None)
-                    }
-                })
-                .collect();
-            let ty = Some(Ty::relation(columns));
-
+        Some(_) => {
+            let ty = value.ty.clone();
             let expr = TableExpr::RelationVar(value);
             DeclKind::TableDecl(TableDecl { ty, expr })
         }

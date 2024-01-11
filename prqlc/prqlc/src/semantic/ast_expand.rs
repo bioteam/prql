@@ -78,7 +78,7 @@ pub fn expand_expr(expr: Expr) -> Result<pl::Expr> {
         alias: expr.alias,
         id: None,
         target_id: None,
-        ty: None,
+        ty: expr.ty,
         lineage: None,
         needs_window: false,
         flatten: false,
@@ -262,6 +262,7 @@ pub fn restrict_expr(expr: pl::Expr) -> Expr {
         kind: restrict_expr_kind(expr.kind),
         span: expr.span,
         alias: expr.alias,
+        ty: expr.ty,
     }
 }
 

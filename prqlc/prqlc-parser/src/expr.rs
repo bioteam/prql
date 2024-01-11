@@ -27,11 +27,12 @@ pub fn expr() -> impl Parser<Token, Expr, Error = PError> + Clone {
         let nested_expr = pipeline(lambda_func(expr.clone()).or(func_call(expr.clone()))).boxed();
 
         let tuple = ident_part()
-            .then_ignore(ctrl('='))
-            .or_not()
+            .then_ignore(ctrl('=')).or_not()
+            .then(type_expr().delimited_by(ctrl('<'), ctrl('>')).or_not())
             .then(nested_expr.clone())
-            .map(|(alias, mut expr)| {
+            .map(|((alias, ty), mut expr)| {
                 expr.alias = alias.or(expr.alias);
+                expr.ty = ty.or(expr.ty);
                 expr
             })
             .padded_by(new_line().repeated())
