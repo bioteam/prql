@@ -1,21 +1,21 @@
 //! Contains functions that compile [crate::ast::pl] nodes into [sqlparser] nodes.
 
-use anyhow::{anyhow, bail, Result};
 use itertools::Itertools;
 use regex::Regex;
 use sqlparser::ast::{
     self as sql_ast, BinaryOperator, DateTimeField, Fetch, Function, FunctionArg, FunctionArgExpr,
-    ObjectName, OrderByExpr, SelectItem, UnaryOperator, Value, WindowFrameBound, WindowSpec,
+    FunctionArgumentList, ObjectName, OrderByExpr, SelectItem, UnaryOperator, Value,
+    WindowFrameBound, WindowSpec,
 };
 use std::cmp::Ordering;
 
+use crate::ast::expr::generic::{InterpolateItem, Range};
 use crate::ir::generic::{ColumnSort, SortDirection, WindowFrame, WindowKind};
 use crate::ir::pl::{self, Ident, Literal};
 use crate::ir::rq::*;
 use crate::sql::srq::context::ColumnDecl;
 use crate::utils::{OrMap, VALID_IDENT};
-use crate::{Error, Reason, Span, WithErrorInfo};
-use prqlc_ast::expr::generic::{InterpolateItem, Range};
+use crate::{Error, Reason, Result, Span, WithErrorInfo};
 
 use super::gen_projection::try_into_exprs;
 use super::{keywords, Context};
@@ -103,7 +103,7 @@ pub(super) fn translate_expr(expr: Expr, ctx: &mut Context) -> Result<ExprOrSour
                     }
                 }
                 "std.concat" => return Ok(process_concat(&expr, ctx)?.into()),
-                "std.array_in" => return Ok(process_array_in(args, ctx)?.into()),
+                "std.array_in" => return Ok(process_array_in(&expr, args, ctx)?.into()),
                 "std.date.to_text" => {
                     return Ok(process_date_to_text(&expr, name, args, ctx)?.into())
                 }
@@ -124,8 +124,7 @@ pub(super) fn translate_expr(expr: Expr, ctx: &mut Context) -> Result<ExprOrSour
             return Err(Error::new(Reason::Unexpected {
                 found: "array of values (not supported here)".to_string(),
             })
-            .with_span(expr.span)
-            .into());
+            .with_span(expr.span));
         }
     })
 }
@@ -158,10 +157,15 @@ fn process_null(name: &str, args: &[Expr], ctx: &mut Context) -> Result<sql_ast:
 }
 
 /// Translates into IN (v1, v2, ...) if possible
-fn process_array_in(args: &[Expr], ctx: &mut Context) -> Result<sql_ast::Expr> {
+fn process_array_in(expr: &Expr, args: &[Expr], ctx: &mut Context) -> Result<sql_ast::Expr> {
     match args {
         [col_expr @ Expr {
-            kind: ExprKind::ColumnRef(_),
+            kind:
+                ExprKind::ColumnRef(_)
+                | ExprKind::Literal(_)
+                | ExprKind::SString(_)
+                | ExprKind::Param(_)
+                | ExprKind::Operator { name: _, args: _ },
             ..
         }, Expr {
             kind: ExprKind::Array(in_values),
@@ -174,7 +178,10 @@ fn process_array_in(args: &[Expr], ctx: &mut Context) -> Result<sql_ast::Expr> {
                 .collect::<Result<Vec<sql_ast::Expr>>>()?,
             negated: false,
         }),
-        _ => panic!("args to `std.array_in` must be a column ref and an array"),
+        _ => Err(
+            Error::new_simple("args to `std.array_in` must be an expression and an array")
+                .with_span(expr.span),
+        ),
     }
 }
 
@@ -199,9 +206,7 @@ fn process_date_to_text(
                         kind: ExprKind::Literal(Literal::String(
                             ctx.dialect
                                 .translate_prql_date_format(date_format)
-                                .map_err(|e| {
-                                    Error::new_simple(e).with_span(date_format_exp.span)
-                                })?,
+                                .map_err(|e| e.with_span(date_format_exp.span))?,
                         )),
                         span: date_format_exp.span,
                     },
@@ -214,8 +219,7 @@ fn process_date_to_text(
     } else {
         Err(
             Error::new_simple("`std.date.to_text` only supports a string literal as format")
-                .with_span(expr.span)
-                .into(),
+                .with_span(expr.span),
         )
     }
 }
@@ -224,7 +228,7 @@ fn process_concat(expr: &Expr, ctx: &mut Context) -> Result<sql_ast::Expr> {
     if ctx.dialect.has_concat_function() {
         let concat_args = collect_concat_args(expr);
 
-        let args = concat_args
+        let args_list = concat_args
             .iter()
             .map(|a| {
                 translate_expr((*a).clone(), ctx)
@@ -232,15 +236,19 @@ fn process_concat(expr: &Expr, ctx: &mut Context) -> Result<sql_ast::Expr> {
             })
             .try_collect()?;
 
+        let args = sql_ast::FunctionArguments::List(FunctionArgumentList {
+            args: args_list,
+            clauses: vec![],
+            duplicate_treatment: None,
+        });
+
         Ok(sql_ast::Expr::Function(Function {
             name: ObjectName(vec![sql_ast::Ident::new("CONCAT")]),
             args,
             over: None,
-            distinct: false,
-            special: false,
-            order_by: vec![],
             filter: None,
             null_treatment: None,
+            within_group: vec![],
         }))
     } else {
         let concat_args = collect_concat_args(expr);
@@ -289,7 +297,7 @@ fn collect_concat_args(expr: &Expr) -> Vec<&Expr> {
 }
 
 /// Translate expr into a BETWEEN statement if possible, otherwise returns the expr unchanged.
-fn try_into_between(expr: Expr, ctx: &mut Context) -> Result<Option<sql_ast::Expr>, anyhow::Error> {
+fn try_into_between(expr: Expr, ctx: &mut Context) -> Result<Option<sql_ast::Expr>> {
     match expr.kind {
         ExprKind::Operator { name, args } if name == "std.and" => {
             let [a, b]: [_; 2] = args.try_into().unwrap();
@@ -377,14 +385,19 @@ pub(super) fn translate_literal(l: Literal, ctx: &Context) -> Result<sql_ast::Ex
             let sql_parser_datetime = match vau.unit.as_str() {
                 "years" => DateTimeField::Year,
                 "months" => DateTimeField::Month,
-                "weeks" => DateTimeField::Week,
+                "weeks" => DateTimeField::Week(None),
                 "days" => DateTimeField::Day,
                 "hours" => DateTimeField::Hour,
                 "minutes" => DateTimeField::Minute,
                 "seconds" => DateTimeField::Second,
                 "milliseconds" => DateTimeField::Millisecond,
                 "microseconds" => DateTimeField::Microsecond,
-                _ => bail!("Unsupported interval unit: {}", vau.unit),
+                _ => {
+                    return Err(Error::new_simple(format!(
+                        "Unsupported interval unit: {}",
+                        vau.unit
+                    )))
+                }
             };
             let value = if ctx.dialect.requires_quotes_intervals() {
                 Box::new(sql_ast::Expr::Value(Value::SingleQuotedString(
@@ -451,15 +464,19 @@ fn translate_datetime_literal_with_sqlite_function(
         _ => unreachable!(),
     };
 
+    let args = sql_ast::FunctionArguments::List(FunctionArgumentList {
+        args: vec![arg],
+        clauses: vec![],
+        duplicate_treatment: None,
+    });
+
     sql_ast::Expr::Function(Function {
         name: ObjectName(vec![sql_ast::Ident::new(func_name)]),
-        args: vec![arg],
+        args,
         over: None,
-        distinct: false,
-        special: false,
-        order_by: vec![],
         filter: None,
         null_treatment: None,
+        within_group: vec![],
     })
 }
 
@@ -531,8 +548,7 @@ pub(super) fn translate_star(ctx: &Context, span: Option<Span>) -> Result<String
     if !ctx.query.allow_stars {
         Err(
             Error::new_simple("Target dialect does not support * in this position.")
-                .with_span(span)
-                .into(),
+                .with_span(span),
         )
     } else {
         Ok("*".to_string())
@@ -583,18 +599,17 @@ pub(super) fn range_of_ranges(ranges: Vec<Range<Expr>>) -> Result<Range<i64>> {
     Ok(current)
 }
 
-fn try_range_into_int(range: Range<Expr>) -> Result<Range<i64>> {
-    fn cast_bound(bound: Expr) -> Result<i64> {
-        bound
-            .kind
-            .into_literal()?
-            .into_integer()
-            .map_err(|kind| anyhow!("Failed to convert `{kind:?}`"))
-    }
+fn unpack_as_int_literal(bound: Expr) -> Result<i64> {
+    Some(bound.kind)
+        .and_then(|x| x.into_literal().ok())
+        .and_then(|x| x.into_integer().ok())
+        .ok_or_else(|| Error::new_simple("expected an integer literal").with_span(bound.span))
+}
 
+fn try_range_into_int(range: Range<Expr>) -> Result<Range<i64>> {
     Ok(Range {
-        start: range.start.map(cast_bound).transpose()?,
-        end: range.end.map(cast_bound).transpose()?,
+        start: range.start.map(unpack_as_int_literal).transpose()?,
+        end: range.end.map(unpack_as_int_literal).transpose()?,
     })
 }
 
@@ -677,6 +692,7 @@ fn translate_windowed(
     );
 
     let window = WindowSpec {
+        window_name: None,
         partition_by: try_into_exprs(window.partition, ctx, span)?,
         order_by: (window.sort)
             .into_iter()
@@ -699,11 +715,7 @@ fn translate_windowed(
 
 fn try_into_window_frame(frame: WindowFrame<Expr>) -> Result<sql_ast::WindowFrame> {
     fn parse_bound(bound: Expr) -> Result<WindowFrameBound> {
-        let as_int = bound
-            .kind
-            .into_literal()?
-            .into_integer()
-            .map_err(|kind| anyhow!("Failed to convert `{kind:?}`"))?;
+        let as_int = unpack_as_int_literal(bound)?;
         Ok(match as_int {
             0 => WindowFrameBound::CurrentRow,
             1.. => WindowFrameBound::Following(Some(Box::new(sql_ast::Expr::Value(
@@ -879,16 +891,6 @@ trait SQLExpression {
     fn associativity(&self) -> Associativity {
         Associativity::Both
     }
-
-    /// Returns true iff `a + b + c = (a + b) + c`
-    fn left_associative(&self) -> bool {
-        self.associativity().left_associative()
-    }
-
-    /// Returns true iff `a + b + c = a + (b + c)`
-    fn right_associative(&self) -> bool {
-        self.associativity().right_associative()
-    }
 }
 
 impl SQLExpression for sql_ast::Expr {
@@ -1021,8 +1023,8 @@ impl From<sql_ast::Expr> for ExprOrSource {
 #[cfg(test)]
 mod test {
     use super::*;
+
     use insta::assert_yaml_snapshot;
-    use prqlc_ast::expr::generic::Range;
 
     #[test]
     fn test_range_of_ranges() -> Result<()> {

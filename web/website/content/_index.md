@@ -198,14 +198,16 @@ integrations_section:
       link: https://github.com/kaspermarstal/plprql
       text: Write PRQL functions in PostgreSQL
 
+    - label: "Databend"
+      link: https://www.databend.com/blog/2024-04-03-databend-integrates-prql/
+      text: Databend natively supports PRQL
+
 bindings_section:
   enable: true
   title: "Bindings"
   section_id: "bindings"
   sections:
-    # TODO: switch
-    # - link: https://pypi.org/project/prqlc
-    - link: https://pypi.org/project/prql-python
+    - link: https://pypi.org/project/prqlc
       label: "prqlc-python"
       text: Python bindings for prqlc.
 

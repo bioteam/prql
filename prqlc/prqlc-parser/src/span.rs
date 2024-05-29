@@ -1,8 +1,10 @@
-use std::ops::{Add, Deref, DerefMut};
+use std::ops::{Add, Deref, DerefMut, Sub};
+
+use serde::{Deserialize, Serialize};
 
 use crate::Span;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ParserSpan(pub crate::Span);
 
 impl Deref for ParserSpan {
@@ -26,6 +28,18 @@ impl Add<usize> for ParserSpan {
         Self(Span {
             start: self.start + rhs,
             end: self.end + rhs,
+            source_id: self.source_id,
+        })
+    }
+}
+
+impl Sub<usize> for ParserSpan {
+    type Output = ParserSpan;
+
+    fn sub(self, rhs: usize) -> ParserSpan {
+        Self(Span {
+            start: self.start - rhs,
+            end: self.end - rhs,
             source_id: self.source_id,
         })
     }

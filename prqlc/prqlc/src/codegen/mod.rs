@@ -124,9 +124,16 @@ impl WriteOpt {
     }
 }
 
+/// Holds a list of (generally) expressions, attempting to write them in a
+/// single line, or falling back to one-per-line
+#[derive(Debug, Clone)]
 struct SeparatedExprs<'a, T: WriteSource> {
     exprs: &'a [T],
+    /// The separator to use when writing the expressions on a single line; for
+    /// example `", "`.
     inline: &'static str,
+    /// The separator to use when writing the expressions on separate lines, for
+    /// example `","` (`/n` is implied)
     line_end: &'static str,
 }
 
@@ -185,8 +192,8 @@ impl<'a, T: WriteSource> SeparatedExprs<'a, T> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::ast::{Expr, ExprKind, Literal};
     use insta::assert_snapshot;
-    use prqlc_ast::expr::{Expr, ExprKind, Literal};
 
     #[test]
     fn test_string_quoting() {

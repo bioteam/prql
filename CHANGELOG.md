@@ -1,18 +1,63 @@
 # PRQL Changelog
 
-## 0.11.3 — 2023-02-10
+## 0.11.5 — Unreleased
 
-0.11.3 is a very small release, mostly a rename of the python bindings.
+**Language**:
 
-This release has 13 commits from 4 contributors. Selected changes:
+**Features**:
+
+- Initial implementation of an experimental documentation generator that
+  generates Markdown documentation from `.prql` files. (@vanillajonathan,
+  #4152).
+- Add `prqlc lex` command to the CLI (@max-sixty)
+- Join `side` parameter can take a reference that resolves to a literal (note:
+  this is an experimental feature which may change in the future) (@kgutwin,
+  #4499)
+
+**Fixes**:
+
+- Support expressions on left hand side of `std.in` operator. (@kgutwin, #4498)
+
+**Documentation**:
+
+**Web**:
+
+- The `browser` dist files are now built with `wasm-pack`'s `web` target. As a
+  result, they should be usable as ES Modules, through JS CDNs, and for example
+  with Observable Framework (@srenatus, #4274).
+
+**Integrations**:
+
+- The syntax highlighter package for Sublime Text is now
+  [published](https://packagecontrol.io/packages/PRQL) (@vanillajonathan).
+- The
+  [VSCode Great Icons](https://marketplace.visualstudio.com/items?itemName=emmanuelbeziat.vscode-great-icons)
+  icon pack extension shows a database icon for `.prql` files. (@EmmanuelBeziat)
+- [Tokei](https://github.com/XAMPPRocky/tokei), a source lines of code counter
+  now has support for `.prql` files. (@vanillajonathan)
 
 **Internal changes**:
 
-- As part of making our names more consistent, the python bindings are renamed.
-  `prql-python` becomes a package published and importable as `prqlc`. The
-  internal rust crate is named `prqlc-python`.
+**New Contributors**:
 
-## 0.11.2 — 2023-02-07
+## 0.11.4 — 2024-02-25
+
+0.11.4 is a hotfix release, fixing a CI issue that caused the CLI binaries to be
+built without the `cli` feature.
+
+## 0.11.3 — 2024-02-10
+
+0.11.3 is a very small release, mostly a rename of the Python bindings.
+
+The release has 13 commits from 4 contributors.
+
+**Internal changes**:
+
+- As part of making our names more consistent, the Python bindings are renamed.
+  `prql-python` becomes a package published and importable as `prqlc`. The
+  internal Rust crate is named `prqlc-python`.
+
+## 0.11.2 — 2024-02-07
 
 0.11.2 contains lots of internal changes, lots of syntax highlighting, and the
 beginning of `lutra`, a query runner.
@@ -605,7 +650,7 @@ This release has 17 commits from 4 contributors.
 improvements, such as integration tests with a whole range of DBs, a blog post
 on Pi day, RFCs for a type system, and more robust language bindings.
 
-There's a very small breaking change to the rust API, hence the minor version
+There's a very small breaking change to the Rust API, hence the minor version
 bump.
 
 Here's our April 2023 Update, from our
@@ -880,7 +925,7 @@ This release has 74 commits from 12 contributors. Selected changes:
 - Support double brackets in s-strings which aren't symmetric (@max-sixty,
   #1650)
 - Support Postgres's Interval syntax (@max-sixty, #1649)
-- Fixed tests for `prql-elixir` with MacOS (@kasvith, #1707)
+- Fixed tests for `prql-elixir` with macOS (@kasvith, #1707)
 
 **Documentation**:
 

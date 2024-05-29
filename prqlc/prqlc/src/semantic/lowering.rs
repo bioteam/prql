@@ -2,11 +2,10 @@ use std::collections::hash_map::RandomState;
 use std::collections::{HashMap, HashSet};
 use std::iter::zip;
 
-use anyhow::Result;
 use enum_as_inner::EnumAsInner;
 use itertools::Itertools;
-use prqlc_ast::TupleField;
 
+use crate::ast::TyTupleField;
 use crate::ir::decl::{self, DeclKind, Module, RootModule, TableExpr};
 use crate::ir::generic::{ColumnSort, WindowFrame};
 use crate::ir::pl::{self, Ident, Lineage, LineageColumn, PlFold, QueryDef};
@@ -16,8 +15,11 @@ use crate::ir::rq::{
 use crate::semantic::write_pl;
 use crate::utils::{toposort, IdGenerator};
 use crate::COMPILER_VERSION;
-use crate::{Error, Reason, Span, WithErrorInfo};
-use prqlc_ast::expr::generic::{InterpolateItem, Range, SwitchCase};
+use crate::{
+    ast::generic::{InterpolateItem, Range, SwitchCase},
+    ir::pl::TableExternRef::LocalTable,
+};
+use crate::{Error, Reason, Result, Span, WithErrorInfo};
 
 /// Convert a resolved expression at path `main_path` relative to `root_mod`
 /// into RQ and make sure that:
@@ -80,7 +82,7 @@ pub fn lower_to_ir(
 }
 
 fn extern_ref_to_relation(
-    mut columns: Vec<TupleField>,
+    mut columns: Vec<TyTupleField>,
     fq_ident: &Ident,
     database_module_path: &[String],
 ) -> Result<(rq::Relation, Option<String>), Error> {
@@ -103,21 +105,21 @@ fn extern_ref_to_relation(
     };
 
     // put wildcards last
-    columns.sort_by_key(|a| matches!(a, TupleField::Wildcard(_)));
+    columns.sort_by_key(|a| matches!(a, TyTupleField::Wildcard(_)));
 
     let relation = rq::Relation {
-        kind: rq::RelationKind::ExternRef(extern_name),
+        kind: rq::RelationKind::ExternRef(LocalTable(extern_name)),
         columns: tuple_fields_to_relation_columns(columns),
     };
     Ok((relation, None))
 }
 
-fn tuple_fields_to_relation_columns(columns: Vec<TupleField>) -> Vec<RelationColumn> {
+fn tuple_fields_to_relation_columns(columns: Vec<TyTupleField>) -> Vec<RelationColumn> {
     columns
         .into_iter()
         .map(|field| match field {
-            TupleField::Single(name, _) => RelationColumn::Single(name),
-            TupleField::Wildcard(_) => RelationColumn::Wildcard,
+            TyTupleField::Single(name, _) => RelationColumn::Single(name),
+            TyTupleField::Wildcard(_) => RelationColumn::Wildcard,
         })
         .collect_vec()
 }
@@ -125,7 +127,7 @@ fn tuple_fields_to_relation_columns(columns: Vec<TupleField>) -> Vec<RelationCol
 fn validate_query_def(query_def: &QueryDef) -> Result<()> {
     if let Some(requirement) = &query_def.version {
         if !requirement.matches(&COMPILER_VERSION) {
-            return Err(Error::new_simple("This query uses a version of PRQL that is not supported by prqlc. Please upgrade the compiler.").into());
+            return Err(Error::new_simple("This query uses a version of PRQL that is not supported by prqlc. Please upgrade the compiler."));
         }
     }
     Ok(())
@@ -273,7 +275,7 @@ impl Lowerer {
 
                 // pull columns from the table decl
                 let frame = expr.lineage.as_ref().unwrap();
-                let input = frame.inputs.get(0).unwrap();
+                let input = frame.inputs.first().unwrap();
 
                 let table_decl = self.root_mod.module.get(&input.table).unwrap();
                 let table_decl = table_decl.kind.as_table_decl().unwrap();
@@ -307,7 +309,7 @@ impl Lowerer {
 
                 // pull columns from the table decl
                 let frame = expr.lineage.as_ref().unwrap();
-                let input = frame.inputs.get(0).unwrap();
+                let input = frame.inputs.first().unwrap();
 
                 let table_decl = self.root_mod.module.get(&input.table).unwrap();
                 let table_decl = table_decl.kind.as_table_decl().unwrap();
@@ -397,8 +399,7 @@ impl Lowerer {
                     found: format!("`{}`", write_pl(expr.clone())),
                 })
                 .push_hint("are you missing `from` statement?")
-                .with_span(expr.span)
-                .into())
+                .with_span(expr.span))
             }
         })
     }
@@ -742,8 +743,7 @@ impl Lowerer {
                         who: None,
                         expected: "an identifier".to_string(),
                         found: write_pl(e),
-                    })
-                    .into());
+                    }));
                 }
             }
         }
@@ -833,8 +833,7 @@ impl Lowerer {
                     } else {
                         return Err(
                             Error::new_simple("This wildcard usage is not yet supported.")
-                                .with_span(span)
-                                .into(),
+                                .with_span(span),
                         );
                     }
                 } else if let Some(id) = expr.target_id {
@@ -856,8 +855,7 @@ impl Lowerer {
                 } else {
                     return Err(
                         Error::new_simple("This wildcard usage is not yet supported.")
-                            .with_span(span)
-                            .into(),
+                            .with_span(span),
                     );
                 }
             }
@@ -901,8 +899,7 @@ impl Lowerer {
                 return Err(
                     Error::new_simple("table instance cannot be referenced directly")
                         .push_hint("did you forget to specify the column name?")
-                        .with_span(span)
-                        .into(),
+                        .with_span(span),
                 );
             }
 
@@ -919,12 +916,14 @@ impl Lowerer {
                     found: format!("`{}`", write_pl(expr.clone())),
                 })
                 .push_hint("this is probably a 'bad type' error (we are working on that)")
-                .with_span(expr.span)
-                .into());
+                .with_span(expr.span));
             }
 
             pl::ExprKind::Internal(_) => {
-                panic!("Unresolved lowering: {}", write_pl(expr))
+                return Err(Error::new_assert(format!(
+                    "Unresolved lowering: {}",
+                    write_pl(expr)
+                )))
             }
         };
 
@@ -959,8 +958,7 @@ impl Lowerer {
                         "This table contains unnamed columns that need to be referenced by name",
                     )
                     .with_span(self.root_mod.span_map.get(&id).cloned())
-                    .push_hint("the name may have been overridden later in the pipeline.")
-                    .into()),
+                    .push_hint("the name may have been overridden later in the pipeline.")),
                 };
                 log::trace!("lookup cid of name={name:?} in input {input_columns:?}");
 
@@ -971,7 +969,7 @@ impl Lowerer {
                 }
             }
             None => {
-                return Err(Error::new(Reason::Bug { issue: Some(3870) }))?;
+                return Err(Error::new_bug(3870))?;
             }
         };
 
@@ -1021,8 +1019,7 @@ fn validate_take_range(range: &Range<rq::Expr>, span: Option<Span>) -> Result<()
             expected: "a positive int range".to_string(),
             found: range_display,
         })
-        .with_span(span)
-        .into())
+        .with_span(span))
     } else {
         Ok(())
     }
@@ -1135,20 +1132,15 @@ fn get_span_of_id(l: &Lowerer, id: Option<usize>) -> Option<Span> {
     id.and_then(|id| l.root_mod.span_map.get(&id)).cloned()
 }
 
-fn with_span_if_not_exists<'a, F>(get_span: F) -> impl FnOnce(anyhow::Error) -> anyhow::Error + 'a
+fn with_span_if_not_exists<'a, F>(get_span: F) -> impl FnOnce(Error) -> Error + 'a
 where
     F: FnOnce() -> Option<Span> + 'a,
 {
     move |e| {
-        let e = match e.downcast::<Error>() {
-            Ok(e) => e,
-            Err(e) => return e,
-        };
-
         if e.span.is_some() {
-            return e.into();
+            return e;
         }
 
-        e.with_span(get_span()).into()
+        e.with_span(get_span())
     }
 }

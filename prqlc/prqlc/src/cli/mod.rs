@@ -12,24 +12,23 @@ use ariadne::Source;
 use clap::{CommandFactory, Parser, Subcommand, ValueHint};
 use clio::has_extension;
 use clio::Output;
+use is_terminal::IsTerminal;
 use itertools::Itertools;
-use prqlc::semantic::NS_DEFAULT_DB;
-use prqlc_ast::stmt::StmtKind;
 use std::collections::HashMap;
 use std::env;
-use std::io::Read;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::ops::Range;
 use std::path::Path;
-use std::path::PathBuf;
 use std::process::exit;
 use std::str::FromStr;
 
 use prqlc::semantic;
 use prqlc::semantic::reporting::{collect_frames, label_references};
-use prqlc::{downcast, Options, Target};
+use prqlc::semantic::NS_DEFAULT_DB;
+use prqlc::{ast, prql_to_tokens};
 use prqlc::{ir::pl::Lineage, ir::Span};
 use prqlc::{pl_to_prql, pl_to_rq_tree, prql_to_pl, prql_to_pl_tree, rq_to_sql, SourceTree};
+use prqlc::{Options, Target};
 
 /// Entrypoint called by [`crate::main`]
 pub fn main() -> color_eyre::eyre::Result<()> {
@@ -74,6 +73,14 @@ struct Cli {
 enum Command {
     /// Parse into PL AST
     Parse {
+        #[command(flatten)]
+        io_args: IoArgs,
+        #[arg(value_enum, long, default_value = "yaml")]
+        format: Format,
+    },
+
+    /// Lex into Tokens
+    Lex {
         #[command(flatten)]
         io_args: IoArgs,
         #[arg(value_enum, long, default_value = "yaml")]
@@ -225,7 +232,7 @@ impl Command {
                     // We're discarding many of the benefits of Clio here...)
                     if path.as_os_str() == "" {
                         let mut output: Output = Output::new(input.path())?;
-                        output.write_all(&pl_to_prql(ast)?.into_bytes())?;
+                        output.write_all(&pl_to_prql(&ast)?.into_bytes())?;
                         break;
                     }
 
@@ -237,7 +244,7 @@ impl Command {
                     })?;
                     let mut output: Output = Output::new(path_str)?;
 
-                    output.write_all(&pl_to_prql(ast)?.into_bytes())?;
+                    output.write_all(&pl_to_prql(&ast)?.into_bytes())?;
                 }
                 Ok(())
             }
@@ -289,32 +296,40 @@ impl Command {
                     Format::Yaml => serde_yaml::to_string(&ast)?.into_bytes(),
                 }
             }
+            Command::Lex { format, .. } => {
+                let s = sources.sources.values().exactly_one().or_else(|_| {
+                    // TODO: allow multiple sources
+                    bail!("Currently `lex` only works with a single source, but found multiple sources")
+                })?;
+                let tokens = prql_to_tokens(s)?;
+                match format {
+                    Format::Json => serde_json::to_string_pretty(&tokens)?.into_bytes(),
+                    Format::Yaml => serde_yaml::to_string(&tokens)?.into_bytes(),
+                }
+            }
             Command::Collect(_) => {
-                let ast = prql_to_pl_tree(sources)?;
-                let mut root_module_def = prqlc::semantic::compose_module_tree(ast)?;
+                let mut root_module_def = prql_to_pl_tree(sources)?;
 
                 drop_module_def(&mut root_module_def.stmts, "std");
 
-                pl_to_prql(root_module_def.stmts)?.into_bytes()
+                pl_to_prql(&root_module_def)?.into_bytes()
             }
             Command::Debug(DebugCommand::ExpandPL(_)) => {
-                let ast = prql_to_pl_tree(sources)?;
-                let root_module_def = prqlc::semantic::compose_module_tree(ast)?;
+                let root_module_def = prql_to_pl_tree(sources)?;
 
                 let expanded = prqlc::semantic::ast_expand::expand_module_def(root_module_def)?;
 
-                let mut restricted = prqlc::semantic::ast_expand::restrict_stmts(expanded.stmts);
+                let mut restricted = prqlc::semantic::ast_expand::restrict_module_def(expanded);
 
-                drop_module_def(&mut restricted, "std");
+                drop_module_def(&mut restricted.stmts, "std");
 
-                pl_to_prql(restricted)?.into_bytes()
+                pl_to_prql(&restricted)?.into_bytes()
             }
             Command::Debug(DebugCommand::Resolve(_)) => {
                 let stmts = prql_to_pl_tree(sources)?;
 
                 let root_module = semantic::resolve(stmts, Default::default())
-                    .map_err(prqlc::downcast)
-                    .map_err(|e| e.composed(sources))?;
+                    .map_err(|e| prqlc::ErrorMessages::from(e).composed(sources))?;
 
                 // debug output of the PL
                 let mut out = format!("{root_module:#?}\n").into_bytes();
@@ -328,7 +343,7 @@ impl Command {
                 // resolved PL, restricted back into AST
                 let mut root_module = semantic::ast_expand::restrict_module(root_module.module);
                 drop_module_def(&mut root_module.stmts, "std");
-                out.extend(pl_to_prql(root_module.stmts)?.into_bytes());
+                out.extend(pl_to_prql(&root_module)?.into_bytes());
 
                 out
             }
@@ -347,11 +362,10 @@ impl Command {
                 // TODO: potentially if there is code performing a role beyond
                 // presentation, it should be a library function; and we could
                 // promote it to the `prqlc` crate.
-                let stmts = prql_to_pl(&source)?;
+                let root_mod = prql_to_pl(&source)?;
 
                 // resolve
-                let stmts = SourceTree::single(PathBuf::new(), stmts);
-                let ctx = semantic::resolve(stmts, Default::default())?;
+                let ctx = semantic::resolve(root_mod, Default::default())?;
 
                 let frames = if let Ok((main, _)) = ctx.find_main_rel(&[]) {
                     collect_frames(*main.clone().into_relation_var().unwrap())
@@ -363,37 +377,28 @@ impl Command {
                 combine_prql_and_frames(&source, frames).as_bytes().to_vec()
             }
             Command::Debug(DebugCommand::Eval(_)) => {
-                let stmts = prql_to_pl_tree(sources)?;
+                let root_mod = prql_to_pl_tree(sources)?;
 
                 let mut res = String::new();
+                for stmt in root_mod.stmts {
+                    if let ast::StmtKind::VarDef(def) = stmt.kind {
+                        res += &format!("## {}\n", def.name);
 
-                for (path, stmts) in stmts.sources {
-                    res += &format!("# {}\n\n", path.to_str().unwrap());
-
-                    for stmt in stmts {
-                        if let StmtKind::VarDef(def) = stmt.kind {
-                            res += &format!("## {}\n", def.name);
-
-                            let val = semantic::eval(*def.value.unwrap())
-                                .map_err(downcast)
-                                .map_err(|e| e.composed(sources))?;
-                            res += &semantic::write_pl(val);
-                            res += "\n\n";
-                        }
+                        let val = semantic::eval(*def.value.unwrap())
+                            .map_err(|e| prqlc::ErrorMessages::from(e).composed(sources))?;
+                        res += &semantic::write_pl(val);
+                        res += "\n\n";
                     }
                 }
 
                 res.into_bytes()
             }
             Command::Experimental(ExperimentalCommand::GenerateDocs(_)) => {
-                let stmts = prql_to_pl_tree(sources)?;
+                let module_ref = prql_to_pl_tree(sources)?;
 
-                let stmts = stmts.sources.values().next().unwrap().to_vec();
-                docs_generator::generate_markdown_docs(stmts).into_bytes()
+                docs_generator::generate_markdown_docs(module_ref.stmts).into_bytes()
             }
             Command::Resolve { format, .. } => {
-                semantic::load_std_lib(sources);
-
                 let ast = prql_to_pl_tree(sources)?;
                 let ir = pl_to_rq_tree(ast, &main_path, &[NS_DEFAULT_DB.to_string()])?;
 
@@ -408,10 +413,8 @@ impl Command {
                 target,
                 ..
             } => {
-                semantic::load_std_lib(sources);
-
                 let opts = Options::default()
-                    .with_target(Target::from_str(target).map_err(|e| downcast(e.into()))?)
+                    .with_target(Target::from_str(target).map_err(prqlc::ErrorMessages::from)?)
                     .with_signature_comment(*signature_comment)
                     .with_format(*format);
 
@@ -424,16 +427,12 @@ impl Command {
             }
 
             Command::SQLPreprocess { .. } => {
-                semantic::load_std_lib(sources);
-
                 let ast = prql_to_pl_tree(sources)?;
                 let rq = pl_to_rq_tree(ast, &main_path, &[NS_DEFAULT_DB.to_string()])?;
                 let srq = prqlc::sql::internal::preprocess(rq)?;
                 format!("{srq:#?}").as_bytes().to_vec()
             }
             Command::SQLAnchor { format, .. } => {
-                semantic::load_std_lib(sources);
-
                 let ast = prql_to_pl_tree(sources)?;
                 let rq = pl_to_rq_tree(ast, &main_path, &[NS_DEFAULT_DB.to_string()])?;
                 let srq = prqlc::sql::internal::anchor(rq)?;
@@ -449,7 +448,7 @@ impl Command {
                 }
             }
 
-            _ => unreachable!(),
+            _ => unreachable!("Other commands shouldn't reach `execute`"),
         })
     }
 
@@ -458,11 +457,10 @@ impl Command {
         // `input`, rather than matching on them and grabbing `input` from
         // `self`? But possibly if everything moves to `io_args`, then this is
         // quite reasonable?
-        use Command::{
-            Collect, Debug, Experimental, Parse, Resolve, SQLAnchor, SQLCompile, SQLPreprocess,
-        };
+        use Command::*;
         let io_args = match self {
             Parse { io_args, .. }
+            | Lex { io_args, .. }
             | Collect(io_args)
             | Resolve { io_args, .. }
             | SQLCompile { io_args, .. }
@@ -485,8 +483,7 @@ impl Command {
         //
         // See https://github.com/PRQL/prql/issues/3228 for details on us not
         // yet using `input.is_tty()`.
-        // if input.is_tty() {
-        if input.path() == Path::new("-") && atty::is(atty::Stream::Stdin) {
+        if input.path() == Path::new("-") && std::io::stdin().is_terminal() {
             #[cfg(unix)]
             eprintln!("Enter PRQL, then press ctrl-d to compile:\n");
             #[cfg(windows)]
@@ -502,10 +499,11 @@ impl Command {
 
     fn write_output(&mut self, data: &[u8]) -> std::io::Result<()> {
         use Command::{
-            Collect, Debug, Experimental, Parse, Resolve, SQLAnchor, SQLCompile, SQLPreprocess,
+            Collect, Debug, Experimental, Lex, Parse, Resolve, SQLAnchor, SQLCompile, SQLPreprocess,
         };
         let mut output = match self {
             Parse { io_args, .. }
+            | Lex { io_args, .. }
             | Collect(io_args)
             | Resolve { io_args, .. }
             | SQLCompile { io_args, .. }
@@ -524,7 +522,7 @@ impl Command {
     }
 }
 
-fn drop_module_def(stmts: &mut Vec<prqlc_ast::stmt::Stmt>, name: &str) {
+fn drop_module_def(stmts: &mut Vec<ast::stmt::Stmt>, name: &str) {
     stmts.retain(|x| x.kind.as_module_def().map_or(true, |m| m.name != name));
 }
 
@@ -563,6 +561,9 @@ fn combine_prql_and_frames(source: &str, frames: Vec<(Span, Lineage)>) -> String
                 source
                     .get_line_text(source.line(printed_lines_count).unwrap())
                     .unwrap()
+                    // Ariadne 0.4.1 added a line break at the end of the line, so we
+                    // trim it.
+                    .trim_end()
                     .to_string(),
             );
             printed_lines_count += 1;
@@ -574,6 +575,9 @@ fn combine_prql_and_frames(source: &str, frames: Vec<(Span, Lineage)>) -> String
         let chars: String = source
             .get_line_text(source.line(printed_lines_count).unwrap())
             .unwrap()
+            // Ariadne 0.4.1 added a line break at the end of the line, so we
+            // trim it.
+            .trim_end()
             .to_string();
         printed_lines_count += 1;
 
@@ -590,7 +594,7 @@ fn combine_prql_and_frames(source: &str, frames: Vec<(Span, Lineage)>) -> String
 /// are in `prqlc/tests/test.rs`.
 #[cfg(test)]
 mod tests {
-    use insta::{assert_display_snapshot, assert_snapshot};
+    use insta::assert_snapshot;
 
     use super::*;
 
@@ -637,7 +641,7 @@ sort full
             "",
         );
 
-        assert_display_snapshot!(&result.unwrap_err().to_string(), @r###"
+        assert_snapshot!(&result.unwrap_err().to_string(), @r###"
         Error:
            ╭─[:1:1]
            │
@@ -670,7 +674,7 @@ sort full
             "main",
         )
         .unwrap();
-        assert_display_snapshot!(String::from_utf8(result).unwrap().trim(), @r###"
+        assert_snapshot!(String::from_utf8(result).unwrap().trim(), @r###"
         WITH x AS (
           SELECT
             y,
@@ -697,33 +701,26 @@ sort full
         )
         .unwrap();
 
-        assert_display_snapshot!(String::from_utf8(output).unwrap().trim(), @r###"
-        root: null
-        sources:
-          '':
-          - VarDef:
-              kind: Main
-              name: main
-              value:
-                Pipeline:
-                  exprs:
-                  - FuncCall:
-                      name:
-                        Ident:
-                        - from
-                      args:
-                      - Ident:
-                        - x
-                  - FuncCall:
-                      name:
-                        Ident:
-                        - select
-                      args:
-                      - Ident:
-                        - y
-            span: 1:0-17
-        source_ids:
-          1: ''
+        assert_snapshot!(String::from_utf8(output).unwrap().trim(), @r###"
+        name: Project
+        stmts:
+        - VarDef:
+            kind: Main
+            name: main
+            value:
+              Pipeline:
+                exprs:
+                - FuncCall:
+                    name:
+                      Ident: from
+                    args:
+                    - Ident: x
+                - FuncCall:
+                    name:
+                      Ident: select
+                    args:
+                    - Ident: y
+          span: 1:0-17
         "###);
     }
     #[test]
@@ -738,7 +735,7 @@ sort full
         )
         .unwrap();
 
-        assert_display_snapshot!(String::from_utf8(output).unwrap().trim(), @r###"
+        assert_snapshot!(String::from_utf8(output).unwrap().trim(), @r###"
         def:
           version: null
           other: {}
@@ -747,7 +744,8 @@ sort full
           name: null
           relation:
             kind: !ExternRef
-            - x
+              LocalTable:
+              - x
             columns:
             - !Single y
             - Wildcard
@@ -782,7 +780,7 @@ sort full
         )
         .unwrap();
 
-        assert_display_snapshot!(String::from_utf8(output).unwrap().trim(), @r###"
+        assert_snapshot!(String::from_utf8(output).unwrap().trim(), @r###"
         ctes:
         - tid: 1
           kind:
@@ -835,6 +833,92 @@ sort full
           - Sort:
             - direction: Asc
               column: 2
+        "###);
+    }
+
+    #[test]
+    fn lex() {
+        let output = Command::execute(
+            &Command::Lex {
+                io_args: IoArgs::default(),
+                format: Format::Yaml,
+            },
+            &mut "from x | select y".into(),
+            "",
+        )
+        .unwrap();
+
+        // TODO: terser output; maybe serialize span as `0..4`? Remove the
+        // `!Ident` complication?
+        assert_snapshot!(String::from_utf8(output).unwrap().trim(), @r###"
+        - kind: !Ident from
+          span:
+            start: 0
+            end: 4
+        - kind: !Ident x
+          span:
+            start: 5
+            end: 6
+        - kind: !Control '|'
+          span:
+            start: 7
+            end: 8
+        - kind: !Ident select
+          span:
+            start: 9
+            end: 15
+        - kind: !Ident y
+          span:
+            start: 16
+            end: 17
+        "###);
+    }
+    #[test]
+    fn lex_nested_enum() {
+        let output = Command::execute(
+            &Command::Lex {
+                io_args: IoArgs::default(),
+                format: Format::Yaml,
+            },
+            &mut r#"
+            from tracks
+            take 10
+            "#
+            .into(),
+            "",
+        )
+        .unwrap();
+
+        assert_snapshot!(String::from_utf8(output).unwrap().trim(), @r###"
+        - kind: NewLine
+          span:
+            start: 0
+            end: 1
+        - kind: !Ident from
+          span:
+            start: 13
+            end: 17
+        - kind: !Ident tracks
+          span:
+            start: 18
+            end: 24
+        - kind: NewLine
+          span:
+            start: 24
+            end: 25
+        - kind: !Ident take
+          span:
+            start: 37
+            end: 41
+        - kind: !Literal
+            Integer: 10
+          span:
+            start: 42
+            end: 44
+        - kind: NewLine
+          span:
+            start: 44
+            end: 45
         "###);
     }
 }
