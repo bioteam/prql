@@ -23,6 +23,7 @@ columns:
         - tax
       target_id: 125
       target_name: ~
+      ty: ~
   - Single:
       name: ~
       target_id: 126
@@ -33,24 +34,24 @@ columns:
             - - ~
               - kind:
                   Primitive: Int
-                span: "2:970-973"
+                span: "0:970-973"
                 name: ~
             - - ~
               - kind:
                   Primitive: Float
-                span: "2:977-982"
+                span: "0:977-982"
                 name: ~
             - - ~
               - kind:
                   Primitive: Timestamp
-                span: "2:986-995"
+                span: "0:986-995"
                 name: ~
             - - ~
               - kind:
                   Primitive: Date
-                span: "2:999-1003"
+                span: "0:999-1003"
                 name: ~
-        span: "2:970-1003"
+        span: "0:970-1003"
         name: ~
 inputs:
   - id: 121
@@ -58,4 +59,3 @@ inputs:
     table:
       - default_db
       - orders
-

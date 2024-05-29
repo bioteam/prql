@@ -28,14 +28,14 @@ columns:
             - - ~
               - kind:
                   Primitive: Float
-                span: "2:4193-4198"
+                span: "0:4188-4193"
                 name: ~
             - - ~
               - kind:
                   Singleton: "Null"
-                span: "2:4202-4206"
+                span: "0:4197-4201"
                 name: ~
-        span: "2:4193-4206"
+        span: "0:4188-4201"
         name: ~
 inputs:
   - id: 122
@@ -48,4 +48,3 @@ inputs:
     table:
       - default_db
       - salaries
-

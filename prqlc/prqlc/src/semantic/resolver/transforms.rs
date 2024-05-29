@@ -1109,7 +1109,7 @@ mod tests {
 
         assert_yaml_snapshot!(parse_resolve_and_lower("
         from c_invoice
-        select invoice_no
+        select { invoice_no }
         group invoice_no (
             take 1
         )

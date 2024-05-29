@@ -129,16 +129,32 @@ Module {
                                     kind: Tuple(
                                         [
                                             Wildcard(
-                                                None,
+                                                Some(
+                                                    Ty {
+                                                        kind: Any,
+                                                        span: Some(
+                                                            0:2043-2050,
+                                                        ),
+                                                        name: None,
+                                                    },
+                                                ),
                                             ),
                                         ],
                                     ),
-                                    span: None,
-                                    name: None,
+                                    span: Some(
+                                        0:2042-2053,
+                                    ),
+                                    name: Some(
+                                        "tuple",
+                                    ),
                                 },
                             ),
-                            span: None,
-                            name: None,
+                            span: Some(
+                                0:2158-2165,
+                            ),
+                            name: Some(
+                                "relation",
+                            ),
                         },
                     ),
                     expr: RelationVar(
@@ -211,7 +227,6 @@ module default_db {
   let tracks <[{*..}]> = internal local_table
 }
 
-let main <[{*..}]> = default_db.tracks
+let main <relation> = default_db.tracks
 
 ----- stderr -----
-

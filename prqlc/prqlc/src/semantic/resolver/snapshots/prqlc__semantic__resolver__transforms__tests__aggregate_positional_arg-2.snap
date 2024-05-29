@@ -318,55 +318,55 @@ lineage:
                       - - ~
                         - kind:
                             Primitive: Int
-                          span: "2:1963-1966"
+                          span: "0:1963-1966"
                           name: ~
                       - - ~
                         - kind:
                             Primitive: Float
-                          span: "2:1970-1975"
+                          span: "0:1970-1975"
                           name: ~
                       - - ~
                         - kind:
                             Primitive: Bool
-                          span: "2:1979-1983"
+                          span: "0:1979-1983"
                           name: ~
                       - - ~
                         - kind:
                             Primitive: Text
-                          span: "2:1987-1991"
+                          span: "0:1987-1991"
                           name: ~
                       - - ~
                         - kind:
                             Primitive: Date
-                          span: "2:1995-1999"
+                          span: "0:1995-1999"
                           name: ~
                       - - ~
                         - kind:
                             Primitive: Time
-                          span: "2:2003-2007"
+                          span: "0:2003-2007"
                           name: ~
                       - - ~
                         - kind:
                             Primitive: Timestamp
-                          span: "2:2011-2020"
+                          span: "0:2011-2020"
                           name: ~
                       - - ~
                         - kind:
                             Singleton: "Null"
-                          span: "2:2024-2028"
+                          span: "0:2024-2028"
                           name: ~
-                  span: "2:1963-2028"
+                  span: "0:1963-2028"
                   name: scalar
               - - ~
                 - kind:
                     Tuple:
                       - Wildcard:
                           kind: Any
-                          span: "2:2043-2050"
+                          span: "0:2043-2050"
                           name: ~
-                  span: "2:2042-2053"
+                  span: "0:2042-2053"
                   name: tuple
-          span: "2:3020-3035"
+          span: "0:3013-3028"
           name: ~
     - Single:
         name: ~
@@ -378,14 +378,14 @@ lineage:
               - - ~
                 - kind:
                     Primitive: Float
-                  span: "2:4193-4198"
+                  span: "0:4188-4193"
                   name: ~
               - - ~
                 - kind:
                     Singleton: "Null"
-                  span: "2:4202-4206"
+                  span: "0:4197-4201"
                   name: ~
-          span: "2:4193-4206"
+          span: "0:4188-4201"
           name: ~
   inputs:
     - id: 118
